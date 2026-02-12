@@ -4,13 +4,13 @@ import { DialogueResult, Scope, HumanRight } from "../types";
 // Initialize Gemini Client
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || "");
 const model = genAI.getGenerativeModel({
-  model: "gemini-2.5-flash-latest",
+  model: "gemini-2.5-flash-lite",
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tools: [{ googleSearch: {} } as any] // Enable Google Search for all queries
 });
 
 const modelNoSearch = genAI.getGenerativeModel({
-  model: "gemini-2.5-flash-latest",
+  model: "gemini-2.5-flash-lite",
   generationConfig: {
     responseMimeType: "application/json",
     responseSchema: {
