@@ -129,12 +129,21 @@ function isLikelyAccessible(url: string, sourceType: 'legal' | 'ngo' | 'academic
 
 // Helper to parse search results
 async function parseSearchResults(query: string, searchContext: string, groundingUrls: any[], sourceType: 'legal' | 'ngo' | 'academic'): Promise<DialogueResult> {
-  const trustedUrls = groundingUrls.filter(url => 
-    isTrustedSource(url.uri, sourceType) && isLikelyAccessible(url.uri, sourceType)
-  );
+  let trustedUrls;
+  
+  if (sourceType === 'legal') {
+    // For legal sources, be more permissive - just check basic trust
+    trustedUrls = groundingUrls.filter(url => isTrustedSource(url.uri, sourceType));
+  } else {
+    // For academic/NGO, apply both filters
+    trustedUrls = groundingUrls.filter(url => 
+      isTrustedSource(url.uri, sourceType) && isLikelyAccessible(url.uri, sourceType)
+    );
+  }
   
   if (trustedUrls.length === 0) {
     console.warn("No trusted/accessible sources found in grounding results");
+    console.log("Available URLs:", groundingUrls.map(u => u.uri)); // Debug logging
     return { sources: [] };
   }
 
