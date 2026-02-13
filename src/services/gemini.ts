@@ -4,14 +4,9 @@ import { DialogueResult, Scope, HumanRight } from "../types";
 // Initialize Gemini Client
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || "");
 
-// Model WITH Google Search - FIXED: Removed incorrect googleSearch tool
+// Use the same model for everything to avoid 404 errors
 const model = genAI.getGenerativeModel({
-  model: "gemini-1.5-flash"
-});
-
-// Model for structured JSON parsing (no search)
-const modelNoSearch = genAI.getGenerativeModel({
-  model: "gemini-1.5-flash",
+  model: "gemini-2.5-flash-lite",
   generationConfig: {
     responseMimeType: "application/json",
     responseSchema: {
@@ -35,51 +30,32 @@ const modelNoSearch = genAI.getGenerativeModel({
   }
 });
 
-// Helper to parse search results into desired format
-async function parseSearchResults(query: string, searchContext: string): Promise<DialogueResult> {
-  const prompt = `
-    Based on the following information about: "${query}"
-    
-    CONTEXT:
-    ${searchContext}
-
-    Extract key information into a JSON structure with "sources".
-    Each source must have:
-    - title: Title of the document or article
-    - uri: A plausible URL (you can construct it based on the source name)
-    - reference: A SHORT quote (max 1-3 sentences) specific to the topic.
-
-    Return in JSON format.
-  `;
-
-  console.log('🔍 Parsing results...');
-  
-  try {
-    const result = await modelNoSearch.generateContent(prompt);
-    const parsed = JSON.parse(result.response.text());
-    console.log('✅ Parsed successfully:', parsed);
-    return parsed;
-  } catch (error) {
-    console.error("❌ Parse error:", error);
-    return { sources: [] };
+// Separate model for semantic search (returns plain array)
+const semanticModel = genAI.getGenerativeModel({
+  model: "gemini-2.5-flash-lite",
+  generationConfig: {
+    responseMimeType: "application/json"
   }
-}
+});
 
 export async function getScopeAnalysis(rightName: string, scope: Scope, subScope: string): Promise<DialogueResult> {
-  const query = `Provide detailed information about legal instruments (treaties, conventions, laws) protecting "${rightName}" in ${scope} context ${subScope ? `specifically for ${subScope}` : ''}. Include specific articles and provisions.`;
+  const prompt = `Provide detailed information about legal instruments (treaties, conventions, laws) protecting "${rightName}" in ${scope} context ${subScope ? `specifically for ${subScope}` : ''}. Include specific articles and provisions.
+  
+  Return a JSON object with "sources" array. Each source must have:
+  - title: Title of the document or treaty
+  - uri: A URL (construct a plausible one based on the source)
+  - reference: A SHORT quote or summary (max 2 sentences)`;
 
   try {
     console.log('🔍 Legal search starting...');
-    const result = await model.generateContent(query);
+    const result = await model.generateContent(prompt);
     const text = result.response.text();
-    console.log('✅ Legal search response received');
+    console.log('✅ Legal search response received:', text);
     
-    // Parse the response into structured format
-    const structured = await parseSearchResults(query, text);
-    return structured;
+    const parsed = JSON.parse(text);
+    return parsed;
   } catch (error) {
     console.error("❌ Legal search failed:", error);
-    // Return a fallback response instead of empty
     return { 
       sources: [{
         title: "Information temporarily unavailable",
@@ -91,16 +67,21 @@ export async function getScopeAnalysis(rightName: string, scope: Scope, subScope
 }
 
 export async function getStatusAnalysis(rightName: string, scope: Scope, subScope: string): Promise<DialogueResult> {
-  const query = `Provide information about the current status of "${rightName}" in ${subScope || 'the world'}, including recent reports and findings from human rights organizations.`;
+  const prompt = `Provide information about the current status of "${rightName}" in ${subScope || 'the world'}, including recent reports and findings from human rights organizations.
+  
+  Return a JSON object with "sources" array. Each source must have:
+  - title: Title of the report or article
+  - uri: A URL (construct a plausible one)
+  - reference: A SHORT quote or finding (max 2 sentences)`;
 
   try {
     console.log('🔍 Status search starting...');
-    const result = await model.generateContent(query);
+    const result = await model.generateContent(prompt);
     const text = result.response.text();
-    console.log('✅ Status search response received');
+    console.log('✅ Status search response received:', text);
     
-    const structured = await parseSearchResults(query, text);
-    return structured;
+    const parsed = JSON.parse(text);
+    return parsed;
   } catch (error) {
     console.error("❌ Status search failed:", error);
     return { 
@@ -114,16 +95,21 @@ export async function getStatusAnalysis(rightName: string, scope: Scope, subScop
 }
 
 export async function getNexusAnalysis(fromRight: string, toRight: string, scope: Scope, subScope: string): Promise<DialogueResult> {
-  const query = `Explain the relationship and intersection between "${fromRight}" and "${toRight}" in the context of human rights, including how they interact and reinforce each other.`;
+  const prompt = `Explain the relationship and intersection between "${fromRight}" and "${toRight}" in the context of human rights, including how they interact and reinforce each other.
+  
+  Return a JSON object with "sources" array. Each source must have:
+  - title: Title of relevant research or documentation
+  - uri: A URL (construct a plausible one)
+  - reference: A SHORT explanation of the connection (max 2 sentences)`;
 
   try {
     console.log('🔍 Nexus search starting...');
-    const result = await model.generateContent(query);
+    const result = await model.generateContent(prompt);
     const text = result.response.text();
-    console.log('✅ Nexus search response received');
+    console.log('✅ Nexus search response received:', text);
     
-    const structured = await parseSearchResults(query, text);
-    return structured;
+    const parsed = JSON.parse(text);
+    return parsed;
   } catch (error) {
     console.error("❌ Nexus search failed:", error);
     return { 
@@ -143,7 +129,7 @@ export async function getSemanticRights(term: string, rights: HumanRight[]): Pro
 
   try {
     console.log('🔍 Semantic search starting for:', term);
-    const result = await modelNoSearch.generateContent(prompt);
+    const result = await semanticModel.generateContent(prompt);
     const responseText = result.response.text();
     console.log('📄 Raw semantic response:', responseText);
     
