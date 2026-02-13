@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { DialogueResult } from '../types';
 
@@ -106,13 +105,6 @@ const DialoguePanel: React.FC<DialoguePanelProps> = ({ result, isLoading, onClos
                       <span className="text-[7px] font-technical opacity-40 uppercase tracking-widest">Nexus_Fragment</span>
                       <div className="text-[10px] font-typewriter leading-relaxed bg-[#f9f9f9] p-3 italic border border-[#5b5b5b]/5">
                         "{s.reference || "FRAGMENT_MISSING"}"
-                      </div>
-                    </div>
-
-                    <div className="flex gap-4 pl-4 items-center">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-[6px] font-technical opacity-30 uppercase tracking-widest">Year</span>
-                        <span className="text-[9px] font-typewriter uppercase font-bold">{s.date || "N/A"}</span>
                       </div>
                     </div>
                   </div>
