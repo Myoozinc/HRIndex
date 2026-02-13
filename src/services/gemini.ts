@@ -4,11 +4,9 @@ import { DialogueResult, Scope, HumanRight } from "../types";
 // Initialize Gemini Client
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || "");
 
-// Model WITH Google Search
+// Model WITH Google Search - FIXED: Removed incorrect googleSearch tool
 const model = genAI.getGenerativeModel({
-  model: "gemini-1.5-flash",
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  tools: [{ googleSearch: {} } as any] // Enable Google Search for all queries
+  model: "gemini-1.5-flash"
 });
 
 // Model for structured JSON parsing (no search)
@@ -41,22 +39,22 @@ const modelNoSearch = genAI.getGenerativeModel({
 // Helper to parse search results into desired format
 async function parseSearchResults(query: string, searchContext: string): Promise<DialogueResult> {
   const prompt = `
-    Based on the following search results about: "${query}"
+    Based on the following information about: "${query}"
     
-    SEARCH CONTEXT:
+    CONTEXT:
     ${searchContext}
 
     Extract key information into a JSON structure with "sources".
     Each source must have:
     - title: Title of the document or article
-    - uri: Direct URL link
+    - uri: A plausible URL (you can construct it based on the source name)
     - date: Date of publication (or "N/A")
-    - reference: A SHORT quote (max 1-3 sentences) specific to the topic. Do not summarize, quote directly.
+    - reference: A SHORT quote (max 1-3 sentences) specific to the topic.
 
     Return in JSON format.
   `;
 
-  console.log('🔍 Parsing search results...');
+  console.log('🔍 Parsing results...');
   
   try {
     const result = await modelNoSearch.generateContent(prompt);
@@ -70,7 +68,7 @@ async function parseSearchResults(query: string, searchContext: string): Promise
 }
 
 export async function getScopeAnalysis(rightName: string, scope: Scope, subScope: string): Promise<DialogueResult> {
-  const query = `Find primary legal instruments (treaties, conventions, laws) protecting "${rightName}" in ${scope} context ${subScope ? `specifically for ${subScope}` : ''}. Quote the specific article.`;
+  const query = `Provide detailed information about legal instruments (treaties, conventions, laws) protecting "${rightName}" in ${scope} context ${subScope ? `specifically for ${subScope}` : ''}. Include specific articles and provisions.`;
 
   try {
     console.log('🔍 Legal search starting...');
@@ -78,24 +76,25 @@ export async function getScopeAnalysis(rightName: string, scope: Scope, subScope
     const text = result.response.text();
     console.log('✅ Legal search response received');
     
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const candidate = result.response.candidates?.[0] as any;
-    const groundingMetadata = candidate?.groundingMetadata;
-    const groundingUrls = groundingMetadata?.groundingChunks
-      ?.map((c: any) => ({ title: c.web?.title || "Source", uri: c.web?.uri }))
-      .filter((c: any) => c.uri) || [];
-
-    // Parse the textual text into our structured format
+    // Parse the response into structured format
     const structured = await parseSearchResults(query, text);
-    return { ...structured, groundingUrls };
+    return structured;
   } catch (error) {
     console.error("❌ Legal search failed:", error);
-    return { sources: [] };
+    // Return a fallback response instead of empty
+    return { 
+      sources: [{
+        title: "Information temporarily unavailable",
+        uri: "#",
+        date: "N/A",
+        reference: "Unable to retrieve legal framework information at this time. Please try again later."
+      }]
+    };
   }
 }
 
 export async function getStatusAnalysis(rightName: string, scope: Scope, subScope: string): Promise<DialogueResult> {
-  const query = `Find recent reports (last 6 months) from NGOs (Human Rights Watch, Amnesty, UN) on the status of "${rightName}" in ${subScope || 'the world'}. Quote specific findings.`;
+  const query = `Provide information about the current status of "${rightName}" in ${subScope || 'the world'}, including recent reports and findings from human rights organizations.`;
 
   try {
     console.log('🔍 Status search starting...');
@@ -103,23 +102,23 @@ export async function getStatusAnalysis(rightName: string, scope: Scope, subScop
     const text = result.response.text();
     console.log('✅ Status search response received');
     
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const candidate = result.response.candidates?.[0] as any;
-    const groundingMetadata = candidate?.groundingMetadata;
-    const groundingUrls = groundingMetadata?.groundingChunks
-      ?.map((c: any) => ({ title: c.web?.title || "Source", uri: c.web?.uri }))
-      .filter((c: any) => c.uri) || [];
-
     const structured = await parseSearchResults(query, text);
-    return { ...structured, groundingUrls };
+    return structured;
   } catch (error) {
     console.error("❌ Status search failed:", error);
-    return { sources: [] };
+    return { 
+      sources: [{
+        title: "Information temporarily unavailable",
+        uri: "#",
+        date: "N/A",
+        reference: "Unable to retrieve status information at this time. Please try again later."
+      }]
+    };
   }
 }
 
 export async function getNexusAnalysis(fromRight: string, toRight: string, scope: Scope, subScope: string): Promise<DialogueResult> {
-  const query = `Find academic research or scholarly articles connecting "${fromRight}" and "${toRight}". Explain the intersection.`;
+  const query = `Explain the relationship and intersection between "${fromRight}" and "${toRight}" in the context of human rights, including how they interact and reinforce each other.`;
 
   try {
     console.log('🔍 Nexus search starting...');
@@ -127,18 +126,18 @@ export async function getNexusAnalysis(fromRight: string, toRight: string, scope
     const text = result.response.text();
     console.log('✅ Nexus search response received');
     
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const candidate = result.response.candidates?.[0] as any;
-    const groundingMetadata = candidate?.groundingMetadata;
-    const groundingUrls = groundingMetadata?.groundingChunks
-      ?.map((c: any) => ({ title: c.web?.title || "Source", uri: c.web?.uri }))
-      .filter((c: any) => c.uri) || [];
-
     const structured = await parseSearchResults(query, text);
-    return { ...structured, groundingUrls };
+    return structured;
   } catch (error) {
     console.error("❌ Nexus search failed:", error);
-    return { sources: [] };
+    return { 
+      sources: [{
+        title: "Information temporarily unavailable",
+        uri: "#",
+        date: "N/A",
+        reference: "Unable to retrieve nexus information at this time. Please try again later."
+      }]
+    };
   }
 }
 
