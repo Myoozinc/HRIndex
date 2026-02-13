@@ -82,7 +82,6 @@ export async function getScopeAnalysis(rightName: string, scope: Scope, subScope
     const text = result.response.text();
     console.log('✅ Legal search response received');
     
-    // Enhanced parsing for legal sources
     const legalPrompt = `
       Based on this information about legal protections for "${rightName}":
       
@@ -91,7 +90,7 @@ export async function getScopeAnalysis(rightName: string, scope: Scope, subScope
 
       Extract legal instruments into a JSON structure with "sources".
       Each source MUST be a real legal document with:
-      - title: Full official name of the treaty, convention, or law (e.g., "International Covenant on Civil and Political Rights (ICCPR)")
+      - title: Full official name of the treaty, convention, or law
       - uri: Official link to the document (UN treaty collection, government website, or construct as needed)
       - reference: Exact article number and a SHORT quote of the relevant provision (1-2 sentences)
 
@@ -104,7 +103,6 @@ export async function getScopeAnalysis(rightName: string, scope: Scope, subScope
     return parsed;
   } catch (error) {
     console.error("❌ Legal search failed:", error);
-    // Return a fallback response instead of empty
     return { 
       sources: [{
         title: "Legal framework information temporarily unavailable",
@@ -116,61 +114,38 @@ export async function getScopeAnalysis(rightName: string, scope: Scope, subScope
 }
 
 export async function getStatusAnalysis(rightName: string, scope: Scope, subScope: string): Promise<DialogueResult> {
-  const query = `You are a human rights researcher. Find SPECIFIC, REAL reports from human rights organizations about "${rightName}" in ${subScope || 'the world'}.
+  const queryText = `You are a human rights researcher. Find SPECIFIC, REAL reports from human rights organizations about ${rightName} in ${subScope || 'the world'}.
 
-REQUIREMENTS:
-- Find 3-4 actual published reports (not hypothetical)
-- Each report must have a specific title (e.g., "World Report 2024: Mexico" not "Report on Rights")
-- Include organization name and publication date
-- Reports should be from: Human Rights Watch, Amnesty International, UN Human Rights Council, or similar credible organizations
-- Focus on reports from the last 12-18 months if possible
-
-Search for reports from these organizations about ${rightName} in ${subScope || 'various countries'}.
+Requirements: Find 3-4 actual published reports from Human Rights Watch, Amnesty International, UN Human Rights Council, or similar credible organizations. Focus on reports from the last 12-18 months if possible. Each report must have a specific title and publication date.
 
 Return the actual reports you find with their exact titles, organizations, and publication dates.`;
 
   try {
     console.log('🔍 Status search starting...');
-    const result = await model.generateContent(query);
+    const result = await model.generateContent(queryText);
     const text = result.response.text();
     console.log('✅ Status search response received');
     
-    const statusPrompt = `
-      You found these reports about "${rightName}" in ${subScope || 'the world'}:
+    const statusPrompt = `You found these reports about ${rightName} in ${subScope || 'the world'}:
       
-      CONTEXT:
-      ${text}
+CONTEXT:
+${text}
 
-      Create a JSON structure with "sources" array. For each report found:
-      
-      MANDATORY FORMAT for each source:
-      {
-        "title": "EXACT report title as published (e.g., 'World Report 2024: Mexico Events')",
-        "uri": "Direct URL to the report on the organization's website (e.g., https://www.hrw.org/world-report/2024/country-chapters/mexico)",
-        "reference": "DIRECT QUOTE from the report (1-2 sentences in quotation marks) about ${rightName}. Example: 'Arbitrary detention remains widespread...' - Organization Name, Month Year"
-      }
+Create a JSON structure with sources array. For each report found, use this MANDATORY FORMAT:
 
-      CRITICAL RULES:
-      1. Title must be SPECIFIC and REAL (not "Human Rights Report" or "Country Analysis")
-      2. URI must be direct link to the actual report on HRW, Amnesty, UN, or news website
-      3. Reference MUST contain a DIRECT QUOTE in quotation marks from the report
-      4. Reference must include: Organization name and publication date (e.g., "Human Rights Watch, January 2024")
-      5. DO NOT write summaries - only direct quotes from the reports
+{
+  "title": "EXACT report title as published",
+  "uri": "Direct URL to the report on the organization website",
+  "reference": "DIRECT QUOTE from the report in quotation marks (1-2 sentences) about the topic, followed by - Organization Name, Month Year"
+}
 
-      CORRECT EXAMPLE:
-      {
-        "title": "World Report 2024: Mexico Events",
-        "uri": "https://www.hrw.org/world-report/2024/country-chapters/mexico",
-        "reference": "'Security forces continue to commit serious human rights violations, including enforced disappearances, torture, and extrajudicial killings, with near-total impunity.' - Human Rights Watch, January 2024"
-      }
+CRITICAL RULES:
+1. Title must be SPECIFIC and REAL
+2. URI must be direct link to actual report
+3. Reference MUST contain a DIRECT QUOTE in quotation marks
+4. DO NOT write summaries, only direct quotes from reports
 
-      WRONG (AI summary):
-      {
-        "reference": "The report discusses ongoing human rights challenges in the region."
-      }
-
-      Return 3-4 sources. Only include real reports with direct quotes.
-    `;
+Return 3-4 sources with real reports and direct quotes.`;
 
     const statusResult = await modelNoSearch.generateContent(statusPrompt);
     const parsed = JSON.parse(statusResult.response.text());
@@ -189,64 +164,40 @@ Return the actual reports you find with their exact titles, organizations, and p
 }
 
 export async function getNexusAnalysis(fromRight: string, toRight: string, scope: Scope, subScope: string): Promise<DialogueResult> {
-  const query = `You are a legal research assistant. Find SPECIFIC, REAL academic papers from Google Scholar that analyze both "${fromRight}" AND "${toRight}" together in human rights context.
+  const queryText = `You are a legal research assistant. Find SPECIFIC, REAL academic papers from Google Scholar that analyze both ${fromRight} AND ${toRight} together in human rights context.
 
-REQUIREMENTS:
-- Find 3-4 actual published papers (not hypothetical)
-- Each paper must have a specific title (not generic like "Human Rights Study")
-- Include author names and publication year
-- Include the journal or publication venue
-- Papers must directly discuss BOTH rights and their relationship
+Requirements: Find 3-4 actual published papers. Each paper must have a specific title, author names, publication year, and journal name. Papers must directly discuss BOTH rights and their relationship.
 
-Search Google Scholar using queries like:
-- "${fromRight}" AND "${toRight}" human rights
-- "intersection of ${fromRight} and ${toRight}"
-- "${fromRight}" "${toRight}" constitutional law
+Search Google Scholar for papers about the intersection of these two rights.
 
 Return the actual papers you find with their exact titles, authors, and where they were published.`;
 
   try {
     console.log('🔍 Nexus search starting for Google Scholar...');
-    const result = await model.generateContent(query);
+    const result = await model.generateContent(queryText);
     const text = result.response.text();
     console.log('✅ Nexus search response received');
     
-    const academicPrompt = `
-      You found these papers about "${fromRight}" and "${toRight}":
+    const academicPrompt = `You found these papers about ${fromRight} and ${toRight}:
       
-      CONTEXT:
-      ${text}
+CONTEXT:
+${text}
 
-      Create a JSON structure with "sources" array. For each paper found:
-      
-      MANDATORY FORMAT for each source:
-      {
-        "title": "EXACT paper title as published (e.g., 'Privacy in the Age of Surveillance: Constitutional Implications')",
-        "uri": "https://scholar.google.com/scholar?q=EXACT+TITLE+WITH+PLUS+SIGNS",
-        "reference": "DIRECT QUOTE from the paper's abstract or introduction (1-2 sentences in quotation marks) that discusses both ${fromRight} and ${toRight}. Example: 'This study examines...' - Author(s), Year, Journal Name"
-      }
+Create a JSON structure with sources array. For each paper found, use this MANDATORY FORMAT:
 
-      CRITICAL RULES:
-      1. Title must be SPECIFIC and REAL (not "Study on Rights" or "Analysis of Law")
-      2. URI must be Google Scholar search link with the exact paper title
-      3. Reference MUST contain a DIRECT QUOTE in quotation marks from the abstract/intro
-      4. Reference must include: Author names, Year, and Journal/Publication name
-      5. DO NOT write summaries - only direct quotes from the papers
+{
+  "title": "EXACT paper title as published",
+  "uri": "https://scholar.google.com/scholar?q=EXACT+TITLE+WITH+PLUS+SIGNS",
+  "reference": "DIRECT QUOTE from the paper abstract or introduction in quotation marks (1-2 sentences) that discusses both rights, followed by - Author names, Year, Journal Name"
+}
 
-      CORRECT EXAMPLE:
-      {
-        "title": "Balancing National Security and Individual Privacy in the Digital Age",
-        "uri": "https://scholar.google.com/scholar?q=Balancing+National+Security+and+Individual+Privacy+in+the+Digital+Age",
-        "reference": "'The tension between national security imperatives and privacy rights has intensified with digital surveillance technologies, requiring courts to develop new constitutional frameworks.' - Smith & Johnson, 2022, Harvard Law Review"
-      }
+CRITICAL RULES:
+1. Title must be SPECIFIC and REAL
+2. URI must be Google Scholar search link with exact paper title
+3. Reference MUST contain a DIRECT QUOTE in quotation marks
+4. DO NOT write summaries, only direct quotes from papers
 
-      WRONG (generic summary):
-      {
-        "reference": "This paper discusses how security and privacy interact in modern contexts."
-      }
-
-      Return 3-4 sources. Only include real papers with direct quotes.
-    `;
+Return 3-4 sources with real papers and direct quotes.`;
 
     const academicResult = await modelNoSearch.generateContent(academicPrompt);
     const parsed = JSON.parse(academicResult.response.text());
@@ -275,7 +226,6 @@ export async function getSemanticRights(term: string, rights: HumanRight[]): Pro
     const responseText = result.response.text();
     console.log('📄 Raw semantic response:', responseText);
     
-    // Try to parse the response
     let parsed;
     try {
       parsed = JSON.parse(responseText);
@@ -287,7 +237,6 @@ export async function getSemanticRights(term: string, rights: HumanRight[]): Pro
     
     console.log('✅ Parsed result:', parsed, 'Type:', typeof parsed);
     
-    // CRITICAL: Ensure we always return an array
     if (!parsed) {
       console.warn('⚠️ Parsed result is null/undefined, returning empty array');
       return [];
@@ -295,226 +244,6 @@ export async function getSemanticRights(term: string, rights: HumanRight[]): Pro
     
     if (!Array.isArray(parsed)) {
       console.warn('⚠️ Parsed result is not an array:', typeof parsed, parsed);
-      // If it's an object with an array property, try to extract it
-      if (typeof parsed === 'object' && parsed !== null) {
-        for (const key of Object.keys(parsed)) {
-          if (Array.isArray(parsed[key])) {
-            console.log('✅ Found array at key:', key);
-            return parsed[key];
-          }
-        }
-      }
-      return [];
-    }
-    
-    console.log('✅ Semantic search completed successfully:', parsed);
-    return parsed;
-  } catch (error) {
-    console.error("❌ Semantic search failed:", error);
-    return [];
-  }
-}
-  - Official UN documents and resolutions
-  
-  Provide REAL, verifiable legal instruments with exact citations and article numbers. Include links to official sources like UN treaty databases, government websites, or legal repositories.`;
-
-  try {
-    console.log('🔍 Legal search starting...');
-    const result = await model.generateContent(query);
-    const text = result.response.text();
-    console.log('✅ Legal search response received');
-    
-    // Enhanced parsing for legal sources
-    const legalPrompt = `
-      Based on this information about legal protections for "${rightName}":
-      
-      CONTEXT:
-      ${text}
-
-      Extract legal instruments into a JSON structure with "sources".
-      Each source MUST be a real legal document with:
-      - title: Full official name of the treaty, convention, or law (e.g., "International Covenant on Civil and Political Rights (ICCPR)")
-      - uri: Official link to the document (UN treaty collection, government website, or construct as needed)
-      - reference: Exact article number and a SHORT quote of the relevant provision (1-2 sentences)
-
-      Return in JSON format. Prioritize real, official legal instruments.
-    `;
-
-    const legalResult = await modelNoSearch.generateContent(legalPrompt);
-    const parsed = JSON.parse(legalResult.response.text());
-    console.log('✅ Legal sources parsed');
-    return parsed;
-  } catch (error) {
-    console.error("❌ Legal search failed:", error);
-    // Return a fallback response instead of empty
-    return { 
-      sources: [{
-        title: "Legal framework information temporarily unavailable",
-        uri: "https://www.ohchr.org/en/instruments-listings",
-        reference: "Unable to retrieve legal framework information at this time. Visit the UN Office of the High Commissioner for Human Rights for official treaty texts."
-      }]
-    };
-  }
-}
-
-export async function getStatusAnalysis(rightName: string, scope: Scope, subScope: string): Promise<DialogueResult> {
-  const query = `Search for recent reports and publications from reputable human rights organizations about "${rightName}" in ${subScope || 'the world'}. Find:
-  
-  - Human Rights Watch reports
-  - Amnesty International publications
-  - UN Human Rights Council reports
-  - Country-specific reports from ${subScope || 'various countries'}
-  - Recent news articles from credible sources
-  - NGO monitoring reports
-  
-  Focus on reports from the last 12 months. Provide REAL, verifiable sources with publication dates and direct links to the reports. Include specific findings about violations, progress, or current status.`;
-
-  try {
-    console.log('🔍 Status search starting...');
-    const result = await model.generateContent(query);
-    const text = result.response.text();
-    console.log('✅ Status search response received');
-    
-    // Enhanced parsing for status reports
-    const statusPrompt = `
-      Based on this information about the current status of "${rightName}" in ${subScope || 'the world'}:
-      
-      CONTEXT:
-      ${text}
-
-      Extract reports into a JSON structure with "sources".
-      Each source MUST be a real report or publication with:
-      - title: Full title of the report (e.g., "World Report 2024: [Country] Events")
-      - uri: Direct link to the report (HRW, Amnesty, UN websites, or news outlets)
-      - reference: Key finding or quote from the report (1-2 sentences) about the current situation
-
-      Return in JSON format. Prioritize recent, credible reports from established human rights organizations.
-    `;
-
-    const statusResult = await modelNoSearch.generateContent(statusPrompt);
-    const parsed = JSON.parse(statusResult.response.text());
-    console.log('✅ Status reports parsed');
-    return parsed;
-  } catch (error) {
-    console.error("❌ Status search failed:", error);
-    return { 
-      sources: [{
-        title: "Current status information temporarily unavailable",
-        uri: "https://www.hrw.org/world-report/2024",
-        reference: `Unable to retrieve current status information for ${rightName}. Check Human Rights Watch, Amnesty International, or UN Human Rights reports for recent updates.`
-      }]
-    };
-  }
-}
-
-export async function getNexusAnalysis(fromRight: string, toRight: string, scope: Scope, subScope: string): Promise<DialogueResult> {
-  const query = `You are a legal research assistant. Find SPECIFIC, REAL academic papers from Google Scholar that analyze both "${fromRight}" AND "${toRight}" together in human rights context.
-
-REQUIREMENTS:
-- Find 3-4 actual published papers (not hypothetical)
-- Each paper must have a specific title (not generic like "Human Rights Study")
-- Include author names and publication year
-- Include the journal or publication venue
-- Papers must directly discuss BOTH rights and their relationship
-
-Search Google Scholar using queries like:
-- "${fromRight}" AND "${toRight}" human rights
-- "intersection of ${fromRight} and ${toRight}"
-- "${fromRight}" "${toRight}" constitutional law
-
-Return the actual papers you find with their exact titles, authors, and where they were published.`;
-
-  try {
-    console.log('🔍 Nexus search starting for Google Scholar...');
-    const result = await model.generateContent(query);
-    const text = result.response.text();
-    console.log('✅ Nexus search response received');
-    
-    const academicPrompt = `
-      You found these papers about "${fromRight}" and "${toRight}":
-      
-      CONTEXT:
-      ${text}
-
-      Create a JSON structure with "sources" array. For each paper found:
-      
-      MANDATORY FORMAT for each source:
-      {
-        "title": "EXACT paper title as published (e.g., 'Privacy in the Age of Surveillance: Constitutional Implications')",
-        "uri": "https://scholar.google.com/scholar?q=EXACT+TITLE+WITH+PLUS+SIGNS",
-        "reference": "DIRECT QUOTE from the paper's abstract or introduction (1-2 sentences in quotation marks) that discusses both ${fromRight} and ${toRight}. Example: 'This study examines...' - Author(s), Year, Journal Name"
-      }
-
-      CRITICAL RULES:
-      1. Title must be SPECIFIC and REAL (not "Study on Rights" or "Analysis of Law")
-      2. URI must be Google Scholar search link with the exact paper title
-      3. Reference MUST contain a DIRECT QUOTE in quotation marks from the abstract/intro
-      4. Reference must include: Author names, Year, and Journal/Publication name
-      5. DO NOT write summaries - only direct quotes from the papers
-
-      CORRECT EXAMPLE:
-      {
-        "title": "Balancing National Security and Individual Privacy in the Digital Age",
-        "uri": "https://scholar.google.com/scholar?q=Balancing+National+Security+and+Individual+Privacy+in+the+Digital+Age",
-        "reference": "'The tension between national security imperatives and privacy rights has intensified with digital surveillance technologies, requiring courts to develop new constitutional frameworks.' - Smith & Johnson, 2022, Harvard Law Review"
-      }
-
-      WRONG (generic summary):
-      {
-        "reference": "This paper discusses how security and privacy interact in modern contexts."
-      }
-
-      Return 3-4 sources. Only include real papers with direct quotes.
-    `;
-
-    const academicResult = await modelNoSearch.generateContent(academicPrompt);
-    const parsed = JSON.parse(academicResult.response.text());
-    console.log('✅ Academic sources parsed');
-    return parsed;
-  } catch (error) {
-    console.error("❌ Nexus search failed:", error);
-    return { 
-      sources: [{
-        title: "Academic research temporarily unavailable",
-        uri: `https://scholar.google.com/scholar?q=${encodeURIComponent(`"${fromRight}" AND "${toRight}" human rights`)}`,
-        reference: `Search Google Scholar manually for peer-reviewed papers analyzing both ${fromRight} and ${toRight}. Use quotation marks around each term for precise results.`
-      }]
-    };
-  }
-}
-
-export async function getSemanticRights(term: string, rights: HumanRight[]): Promise<string[]> {
-  const prompt = `Given this term: "${term}", identify which of the following Human Rights IDs are most relevant.
-  Rights: ${JSON.stringify(rights.map(r => ({ id: r.id, name: r.name, summary: r.summary })))}
-  Return ONLY a JSON array of ID strings. Example: ["1", "5"]`;
-
-  try {
-    console.log('🔍 Semantic search starting for:', term);
-    const result = await modelNoSearch.generateContent(prompt);
-    const responseText = result.response.text();
-    console.log('📄 Raw semantic response:', responseText);
-    
-    // Try to parse the response
-    let parsed;
-    try {
-      parsed = JSON.parse(responseText);
-    } catch (parseError) {
-      console.error('❌ JSON parse failed:', parseError);
-      console.error('Response was:', responseText);
-      return [];
-    }
-    
-    console.log('✅ Parsed result:', parsed, 'Type:', typeof parsed);
-    
-    // CRITICAL: Ensure we always return an array
-    if (!parsed) {
-      console.warn('⚠️ Parsed result is null/undefined, returning empty array');
-      return [];
-    }
-    
-    if (!Array.isArray(parsed)) {
-      console.warn('⚠️ Parsed result is not an array:', typeof parsed, parsed);
-      // If it's an object with an array property, try to extract it
       if (typeof parsed === 'object' && parsed !== null) {
         for (const key of Object.keys(parsed)) {
           if (Array.isArray(parsed[key])) {
