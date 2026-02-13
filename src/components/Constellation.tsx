@@ -95,7 +95,7 @@ const Constellation: React.FC<ConstellationProps> = ({
     { key: 'Cultural', label: 'COLLECTIVE IDENTITY', module: '05' },
   ];
 
-  // Semantic retrieval effect with optimized caching and faster debounce
+  // Semantic retrieval effect with optimized caching and faster debounce - FIXED
   useEffect(() => {
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
 
@@ -105,9 +105,10 @@ const Constellation: React.FC<ConstellationProps> = ({
       // Step 1: Check instant map for high-frequency terms
       const instantMatches = INSTANT_MAP[term] || [];
 
-      // Step 2: Check global session cache
-      if (SEMANTIC_CACHE[term]) {
-        setSemanticIds([...new Set([...instantMatches, ...SEMANTIC_CACHE[term]])]);
+      // Step 2: Check global session cache - FIXED with safety check
+      const cachedResults = SEMANTIC_CACHE[term];
+      if (cachedResults && Array.isArray(cachedResults)) {
+        setSemanticIds([...new Set([...instantMatches, ...cachedResults])]);
         return;
       }
 
@@ -118,14 +119,18 @@ const Constellation: React.FC<ConstellationProps> = ({
       searchTimeoutRef.current = setTimeout(async () => {
         try {
           const ids = await getSemanticRights(term, INITIAL_RIGHTS);
-          SEMANTIC_CACHE[term] = ids; // Store in cache
-          setSemanticIds(prev => [...new Set([...prev, ...ids])]);
+          const validIds = Array.isArray(ids) ? ids : [];
+          SEMANTIC_CACHE[term] = validIds;
+          setSemanticIds(prev => {
+            const prevIds = Array.isArray(prev) ? prev : [];
+            return [...new Set([...prevIds, ...validIds])];
+          });
         } catch (err) {
-          console.error(err);
+          console.error('Semantic search error:', err);
         } finally {
           setIsSearchingSemantics(false);
         }
-      }, 350); // Faster debounce for snappier feel
+      }, 350);
     } else {
       setSemanticIds([]);
       setIsSearchingSemantics(false);
@@ -265,6 +270,149 @@ const Constellation: React.FC<ConstellationProps> = ({
 
             <div className="flex items-center gap-4">
               {subScope && (
+                <button
+                  onClick={() => setSubScope('')}
+                  className="text-[7px] font-technical border border-[#5b5b5b] px-2 py-0.5 uppercase hover:bg-[#5b5b5b] hover:text-white transition-all cursor-pointer bg-white"
+                >
+                  [CLEAR_FILTER]
+                </button>
+              )}
+              {!subScope && <span className="text-[6px] font-technical opacity-30 tracking-[0.2em]">CODEX_MODULES</span>}
+            </div>
+          </div>
+
+          {/* Rapid Concept Search for Rights */}
+          <div className="relative">
+            <i className={`fas ${isSearchingSemantics ? 'fa-spinner fa-spin' : 'fa-search'} absolute left-2.5 top-1/2 -translate-y-1/2 text-[7px] opacity-30`}></i>
+            <input
+              type="text"
+              placeholder="QUICK FIND (e.g. 'FOOD', 'FAIRNESS', 'POLICE')..."
+              value={rightsSearchTerm}
+              onChange={(e) => setRightsSearchTerm(e.target.value)}
+              className="w-full pl-7 pr-20 py-2 border border-[#5b5b5b]/10 bg-white text-[8px] font-typewriter uppercase outline-none focus:border-[#5b5b5b]/30 transition-colors"
+            />
+            
+            {/* Show either loading indicator OR clear button */}
+            {isSearchingSemantics ? (
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 text-[5px] font-technical uppercase opacity-40">
+                Concept_Mapping_Engine...
+              </div>
+            ) : rightsSearchTerm ? (
+              <button
+                onClick={() => setRightsSearchTerm('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center text-[8px] opacity-30 hover:opacity-100 hover:text-[#9b2c2c] transition-all"
+                title="Clear search"
+              >
+                ✕
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto custom-scroll bg-white">
+          {categories.map((cat) => {
+            const filteredRights = getFilteredRights(cat.key);
+            if (rightsSearchTerm && filteredRights.length === 0) return null;
+
+            return (
+              <div key={cat.key} className="border-b border-[#5b5b5b]/10 last:border-0">
+                <button
+                  onClick={() => setOpenDrawer(openDrawer === cat.key ? null : cat.key)}
+                  className={`w-full text-left px-4 py-4 transition-all relative group flex flex-col gap-1 ${openDrawer === cat.key ? 'bg-gray-50' : 'hover:bg-gray-50'
+                    }`}
+                >
+                  {openDrawer === cat.key && <div className="absolute inset-[2px] border border-dotted border-[#5b5b5b]/20 pointer-events-none"></div>}
+                  <div className="flex justify-between items-center w-full relative z-10">
+                    <span className="text-[10px] font-bold font-typewriter tracking-tight uppercase">{cat.label}</span>
+                    <i className={`fas fa-caret-right text-[8px] transition-transform duration-300 ${openDrawer === cat.key ? 'rotate-90' : 'opacity-20'}`}></i>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <div className="text-[6px] font-technical opacity-20 uppercase tracking-[0.2em]">Archive_Entry_0{cat.module}</div>
+                    {rightsSearchTerm && <div className="text-[6px] font-technical text-[#5b5b5b]/40 uppercase">{filteredRights.length} MATCHES</div>}
+                  </div>
+                </button>
+
+                {(openDrawer === cat.key || rightsSearchTerm) && (
+                  <div className="p-3 space-y-2 bg-[#fcfcfc] animate-in slide-in-from-top-1 duration-150 border-t border-[#5b5b5b]/5">
+                    {filteredRights.map(right => {
+                      const isSemanticMatch = semanticIds.includes(right.id) && !right.name.toLowerCase().includes(rightsSearchTerm.toLowerCase());
+                      return (
+                        <div
+                          key={right.id}
+                          draggable
+                          onDragStart={(e) => onDragStart(e, right)}
+                          className={`draggable-card p-3 group hover:border-[#5b5b5b] transition-all flex justify-between items-center bg-white border border-[#5b5b5b]/10 ${isSemanticMatch ? 'border-l-4 border-l-[#9b2c2c]' : ''}`}
+                        >
+                          <div className="flex flex-col gap-1 pr-4">
+                            <div className="flex items-center gap-2">
+                              <div className="font-bold uppercase tracking-tight font-typewriter text-[9px] leading-tight">
+                                {right.name}
+                              </div>
+                              {isSemanticMatch && (
+                                <span className="text-[5px] font-technical bg-[#9b2c2c]/10 text-[#9b2c2c] px-1 py-0.5 border border-[#9b2c2c]/20 uppercase">Semantic_Link</span>
+                              )}
+                            </div>
+                            {rightsSearchTerm && right.summary && (
+                              <div className="text-[7px] font-technical opacity-40 leading-tight uppercase line-clamp-1">
+                                {right.summary}
+                              </div>
+                            )}
+                          </div>
+                          <i className="fas fa-grip-lines text-[8px] opacity-10 group-hover:opacity-40"></i>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          
+          {/* IMPROVED NO RESULTS MESSAGE */}
+          {rightsSearchTerm && categories.every(cat => getFilteredRights(cat.key).length === 0) && (
+            <div className="flex-1 flex flex-col items-center justify-center gap-4 p-10 min-h-[300px]">
+              <div className="relative">
+                <i className={`fas ${isSearchingSemantics ? 'fa-spinner fa-spin text-[#9b2c2c]' : 'fa-search'} text-4xl opacity-20`}></i>
+              </div>
+              
+              {isSearchingSemantics ? (
+                <div className="text-center space-y-2">
+                  <div className="text-[10px] font-typewriter uppercase tracking-widest opacity-60">
+                    Searching Archives...
+                  </div>
+                  <div className="text-[7px] font-technical uppercase opacity-40">
+                    Concept_Mapping_Engine_Active
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center space-y-3">
+                  <div className="text-[11px] font-bold font-typewriter uppercase tracking-wider opacity-60">
+                    No Records Found
+                  </div>
+                  <div className="text-[8px] font-technical uppercase opacity-40 max-w-[200px]">
+                    Archive query "{rightsSearchTerm}" returned zero entries
+                  </div>
+                  <button
+                    onClick={() => setRightsSearchTerm('')}
+                    className="mt-4 px-4 py-2 border border-[#5b5b5b] text-[7px] font-technical uppercase hover:bg-[#5b5b5b] hover:text-white transition-all"
+                  >
+                    [CLEAR_SEARCH]
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="p-4 border-t border-[#5b5b5b] bg-gray-50 flex items-center justify-center shrink-0">
+          <span className="text-[7px] font-technical opacity-40 uppercase tracking-[0.4em]">DRAG_ENTRY_TO_BOARD</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Constellation;
                 <button
                   onClick={() => setSubScope('')}
                   className="text-[7px] font-technical border border-[#5b5b5b] px-2 py-0.5 uppercase hover:bg-[#5b5b5b] hover:text-white transition-all cursor-pointer bg-white"
