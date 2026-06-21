@@ -68,7 +68,7 @@ async function formatWithLLM(prompt: string, retries = 3): Promise<string> {
       body: JSON.stringify({
         model: FORMAT_MODEL,
         messages: [{ role: "user", content: prompt }],
-        max_tokens: 1500,
+        max_tokens: 3000,
         response_format: { type: "json_object" },
       }),
     });
@@ -227,7 +227,7 @@ Each source MUST:
 Return ONLY valid JSON, no markdown. Example:
 {"sources": [{"title": "World Report 2024: Mexico", "uri": "https://www.hrw.org/...", "reference": "\"Security forces continue to commit enforced disappearances...\" — Human Rights Watch, 2024"}]}
 
-Return 3–4 sources. Only use URLs that appeared in the search results.`;
+Return 3–5 sources. Only use URLs that appeared in the search results.`;
 
     const formatted = await formatWithLLM(formatPrompt);
     const parsed = parseJSON(formatted);
@@ -286,7 +286,7 @@ Each source MUST:
 Return ONLY valid JSON, no markdown. Example:
 {"sources": [{"title": "The Indivisibility of Human Rights", "uri": "https://...", "reference": "The right to life and the right to an adequate standard of living are deeply intertwined..."}]}
 
-Return 3–4 sources. Only use URLs that appeared in the search results.`;
+Return 3–5 sources. Only use URLs that appeared in the search results.`;
 
     const formatted = await formatWithLLM(formatPrompt);
     const parsed = parseJSON(formatted);
