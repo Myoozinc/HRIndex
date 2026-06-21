@@ -1,6 +1,6 @@
 # HR_index
 
-**An LLM-powered research platform for exploring the Universal Declaration of Human Rights**
+**An LLM-powered research platform for exploring Human Rights frameworks**
 
 HR_index is an interactive research tool that allows users to explore the 30 articles of the Universal Declaration of Human Rights (UDHR), investigate their legal protections across different jurisdictions, examine their real-world status, and discover how different rights intersect and influence each other.
 
