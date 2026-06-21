@@ -69,7 +69,6 @@ async function formatWithLLM(prompt: string, retries = 3): Promise<string> {
         model: FORMAT_MODEL,
         messages: [{ role: "user", content: prompt }],
         max_tokens: 3000,
-        response_format: { type: "json_object" },
       }),
     });
 
@@ -102,9 +101,35 @@ async function formatWithLLM(prompt: string, retries = 3): Promise<string> {
   throw new Error("OpenRouter rate limited after " + retries + " retries. Please try again in a moment.");
 }
 
+function extractJSON(text: string): string {
+  // Strip markdown code fences if present
+  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch) return fenceMatch[1].trim();
+
+  // Find the first { or [ and last } or ] to extract raw JSON
+  const firstBrace = text.indexOf("{");
+  const firstBracket = text.indexOf("[");
+  
+  if (firstBrace === -1 && firstBracket === -1) return text;
+  
+  let start: number;
+  let endChar: string;
+  
+  if (firstBrace === -1) { start = firstBracket; endChar = "]"; }
+  else if (firstBracket === -1) { start = firstBrace; endChar = "}"; }
+  else if (firstBrace < firstBracket) { start = firstBrace; endChar = "}"; }
+  else { start = firstBracket; endChar = "]"; }
+  
+  const end = text.lastIndexOf(endChar);
+  if (end === -1) return text;
+  
+  return text.slice(start, end + 1);
+}
+
 function parseJSON(text: string): DialogueResult {
   try {
-    const parsed = JSON.parse(text);
+    const cleaned = extractJSON(text);
+    const parsed = JSON.parse(cleaned);
 
     // Handle direct array response
     if (Array.isArray(parsed)) {
