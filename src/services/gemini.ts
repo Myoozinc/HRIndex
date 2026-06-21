@@ -6,7 +6,12 @@ const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const TAVILY_URL = "https://api.tavily.com/search";
 
 // Free model on OpenRouter — only used for formatting, not content generation
-const FORMAT_MODEL = "meta-llama/llama-3.3-70b-instruct:free";
+// Using multiple fallbacks in case one is rate limited
+const FORMAT_MODELS = [
+  "mistralai/mistral-7b-instruct:free",
+  "google/gemma-3-12b-it:free",
+  "meta-llama/llama-3.2-3b-instruct:free",
+];
 
 // --- Core helpers ---
 
@@ -51,28 +56,52 @@ async function tavilySearch(query: string, domains?: string[]): Promise<string> 
 }
 
 async function formatWithLLM(prompt: string): Promise<string> {
-  const response = await fetch(OPENROUTER_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "https://hrindex.vercel.app",
-      "X-Title": "HR Index",
-    },
-    body: JSON.stringify({
-      model: FORMAT_MODEL,
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 1500,
-      response_format: { type: "json_object" },
-    }),
-  });
+  console.log("🤖 Calling OpenRouter, key present:", !!OPENROUTER_API_KEY);
 
-  if (!response.ok) {
-    throw new Error(`OpenRouter error ${response.status}: ${await response.text()}`);
+  for (let i = 0; i < FORMAT_MODELS.length; i++) {
+    const model = FORMAT_MODELS[i];
+    console.log(`🔄 Trying model ${i + 1}/${FORMAT_MODELS.length}: ${model}`);
+
+    const response = await fetch(OPENROUTER_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://hrindex.vercel.app",
+        "X-Title": "HR Index",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 1500,
+        response_format: { type: "json_object" },
+      }),
+    });
+
+    const responseText = await response.text();
+
+    if (response.status === 429) {
+      console.warn(`⚠️ Model ${model} rate limited, trying next...`);
+      continue;
+    }
+
+    if (!response.ok) {
+      console.error("❌ OpenRouter HTTP error:", response.status, responseText);
+      throw new Error(`OpenRouter ${response.status}: ${responseText}`);
+    }
+
+    console.log(`✅ OpenRouter response received from ${model}`);
+
+    try {
+      const data = JSON.parse(responseText);
+      return data.choices?.[0]?.message?.content ?? "{}";
+    } catch {
+      console.error("❌ OpenRouter response not valid JSON:", responseText);
+      throw new Error("OpenRouter returned invalid JSON");
+    }
   }
 
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content ?? "{}";
+  throw new Error("All OpenRouter models are rate limited. Please try again in a moment.");
 }
 
 function parseJSON(text: string): DialogueResult {
@@ -127,7 +156,7 @@ Return 3–5 sources. Only use URLs that appeared in the search results.`;
     console.log("✅ Legal sources parsed:", parsed.sources.length);
     return parsed;
   } catch (error) {
-    console.error("❌ Legal search failed:", error);
+    console.error("❌ Legal search failed:", error instanceof Error ? error.message : String(error));
     return {
       sources: [
         {
@@ -185,7 +214,7 @@ Return 3–4 sources. Only use URLs that appeared in the search results.`;
     console.log("✅ Status reports parsed:", parsed.sources.length);
     return parsed;
   } catch (error) {
-    console.error("❌ Status search failed:", error);
+    console.error("❌ Status search failed:", error instanceof Error ? error.message : String(error));
     return {
       sources: [
         {
@@ -244,7 +273,7 @@ Return 3–4 sources. Only use URLs that appeared in the search results.`;
     console.log("✅ Nexus perspectives parsed:", parsed.sources.length);
     return parsed;
   } catch (error) {
-    console.error("❌ Nexus search failed:", error);
+    console.error("❌ Nexus search failed:", error instanceof Error ? error.message : String(error));
     return {
       sources: [
         {
@@ -286,7 +315,7 @@ Match by conceptual relevance, not just keyword. Return 1–5 most relevant IDs.
 
     return [];
   } catch (error) {
-    console.error("❌ Semantic search failed:", error);
+    console.error("❌ Semantic search failed:", error instanceof Error ? error.message : String(error));
     return [];
   }
 }
