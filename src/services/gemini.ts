@@ -46,47 +46,88 @@ async function tavilySearch(query: string, domains?: string[]): Promise<string> 
     content: string;
   }>;
 
+  if (!results || results.length === 0) {
+    throw new Error("Tavily returned no results for this query.");
+  }
+
   return results
     .map((r, i) => `[${i + 1}] ${r.title}\nURL: ${r.url}\nContent: ${r.content}`)
     .join("\n\n");
 }
 
-async function formatWithLLM(prompt: string): Promise<string> {
-  const response = await fetch(OPENROUTER_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "https://hrindex.vercel.app",
-      "X-Title": "HR Index",
-    },
-    body: JSON.stringify({
-      model: FORMAT_MODEL,
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 1500,
-      response_format: { type: "json_object" },
-    }),
-  });
+async function formatWithLLM(prompt: string, retries = 3): Promise<string> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    const response = await fetch(OPENROUTER_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://hrindex.vercel.app",
+        "X-Title": "HR Index",
+      },
+      body: JSON.stringify({
+        model: FORMAT_MODEL,
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 1500,
+        response_format: { type: "json_object" },
+      }),
+    });
 
-  const responseText = await response.text();
+    const responseText = await response.text();
 
-  if (!response.ok) {
-    console.error("\u274c OpenRouter error:", response.status, responseText);
-    throw new Error(`OpenRouter ${response.status}: ${responseText}`);
+    if (response.status === 429) {
+      let waitSeconds = 15;
+      try {
+        const errData = JSON.parse(responseText);
+        waitSeconds = errData?.error?.metadata?.retry_after_seconds ?? 15;
+      } catch { /* use default */ }
+      console.warn(`⚠️ Rate limited, waiting ${waitSeconds}s (attempt ${attempt}/${retries})...`);
+      await new Promise(resolve => setTimeout(resolve, waitSeconds * 1000));
+      continue;
+    }
+
+    if (!response.ok) {
+      console.error("❌ OpenRouter error:", response.status, responseText);
+      throw new Error(`OpenRouter ${response.status}: ${responseText}`);
+    }
+
+    try {
+      const data = JSON.parse(responseText);
+      return data.choices?.[0]?.message?.content ?? "{}";
+    } catch {
+      throw new Error("OpenRouter returned invalid JSON: " + responseText.slice(0, 200));
+    }
   }
 
-  try {
-    const data = JSON.parse(responseText);
-    return data.choices?.[0]?.message?.content ?? "{}";
-  } catch {
-    throw new Error("OpenRouter returned invalid JSON: " + responseText.slice(0, 200));
-  }
+  throw new Error("OpenRouter rate limited after " + retries + " retries. Please try again in a moment.");
 }
 
 function parseJSON(text: string): DialogueResult {
   try {
-    return JSON.parse(text);
-  } catch {
+    const parsed = JSON.parse(text);
+
+    // Handle direct array response
+    if (Array.isArray(parsed)) {
+      return { sources: parsed };
+    }
+
+    // Handle wrapped responses: {sources:[...]}, {data:[...]}, {results:[...]}, etc.
+    if (parsed && typeof parsed === "object") {
+      for (const key of ["sources", "data", "results", "items"]) {
+        if (Array.isArray(parsed[key])) {
+          return { sources: parsed[key] };
+        }
+      }
+      // Single object returned instead of array — wrap it
+      if (parsed.title && parsed.uri) {
+        return { sources: [parsed] };
+      }
+    }
+
+    console.warn("⚠️ Unexpected JSON shape from LLM:", JSON.stringify(parsed).slice(0, 200));
+    return { sources: [] };
+  } catch (e) {
+    console.error("❌ JSON parse failed:", e, "Raw text:", text?.slice(0, 200));
     return { sources: [] };
   }
 }
@@ -132,7 +173,7 @@ Return 3–5 sources. Only use URLs that appeared in the search results.`;
 
     const formatted = await formatWithLLM(formatPrompt);
     const parsed = parseJSON(formatted);
-    console.log("✅ Legal sources parsed:", parsed.sources.length);
+    console.log("✅ Legal sources parsed:", parsed?.sources?.length ?? 0);
     return parsed;
   } catch (error) {
     console.error("❌ Legal search failed:", error instanceof Error ? error.message : String(error));
@@ -190,7 +231,7 @@ Return 3–4 sources. Only use URLs that appeared in the search results.`;
 
     const formatted = await formatWithLLM(formatPrompt);
     const parsed = parseJSON(formatted);
-    console.log("✅ Status reports parsed:", parsed.sources.length);
+    console.log("✅ Status reports parsed:", parsed?.sources?.length ?? 0);
     return parsed;
   } catch (error) {
     console.error("❌ Status search failed:", error instanceof Error ? error.message : String(error));
@@ -249,7 +290,7 @@ Return 3–4 sources. Only use URLs that appeared in the search results.`;
 
     const formatted = await formatWithLLM(formatPrompt);
     const parsed = parseJSON(formatted);
-    console.log("✅ Nexus perspectives parsed:", parsed.sources.length);
+    console.log("✅ Nexus perspectives parsed:", parsed?.sources?.length ?? 0);
     return parsed;
   } catch (error) {
     console.error("❌ Nexus search failed:", error instanceof Error ? error.message : String(error));
@@ -281,15 +322,24 @@ Match by conceptual relevance, not just keyword. Return 1–5 most relevant IDs.
   try {
     console.log("🔍 Semantic matching for:", term);
     const response = await formatWithLLM(prompt);
-    const parsed = JSON.parse(response);
+    
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(response);
+    } catch {
+      console.warn("⚠️ Semantic response not valid JSON:", response?.slice(0, 100));
+      return [];
+    }
 
-    if (Array.isArray(parsed)) return parsed;
-    if (Array.isArray(parsed?.ids)) return parsed.ids;
-    if (Array.isArray(parsed?.sources)) return [];
+    if (!parsed || typeof parsed !== "object") return [];
+    if (Array.isArray(parsed)) return parsed as string[];
+
+    const obj = parsed as Record<string, unknown>;
+    if (Array.isArray(obj.ids)) return obj.ids as string[];
 
     // Fallback: find any array in the response
-    for (const key of Object.keys(parsed)) {
-      if (Array.isArray(parsed[key])) return parsed[key];
+    for (const key of Object.keys(obj)) {
+      if (Array.isArray(obj[key])) return obj[key] as string[];
     }
 
     return [];
