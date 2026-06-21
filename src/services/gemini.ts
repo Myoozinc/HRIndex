@@ -50,8 +50,9 @@ async function tavilySearch(query: string, domains?: string[]): Promise<string> 
     throw new Error("Tavily returned no results for this query.");
   }
 
+  // Trim each result to 400 chars so the full prompt stays within token limits
   return results
-    .map((r, i) => `[${i + 1}] ${r.title}\nURL: ${r.url}\nContent: ${r.content}`)
+    .map((r, i) => `[${i + 1}] ${r.title}\nURL: ${r.url}\nContent: ${r.content.slice(0, 400)}`)
     .join("\n\n");
 }
 
@@ -68,7 +69,7 @@ async function formatWithLLM(prompt: string, retries = 3): Promise<string> {
       body: JSON.stringify({
         model: FORMAT_MODEL,
         messages: [{ role: "user", content: prompt }],
-        max_tokens: 3000,
+        max_tokens: 4000,
       }),
     });
 
